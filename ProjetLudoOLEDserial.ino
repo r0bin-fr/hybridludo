@@ -3,7 +3,15 @@
 //=============================
 
 //target boiler temp 
-#define DEFAULT_TARGET_TEMP 45 //120
+#define DEFAULT_TARGET_TEMP 25 //120
+
+//debug mode
+#define LOG_MESSAGES //debug ON
+#ifdef LOG_MESSAGES
+  #define HWLOGGING Serial
+#else
+  #define HWLOGGING if (1) {} else Serial
+#endif
 
 //=====================
 // CHRONO init
@@ -11,56 +19,48 @@
 #define PIN_SW_BAS  6
 #define PIN_SW_HAUT  7
 
-int isChronoOn = 0;
+int isChronoPreOn = 0;
+int isChronoShotOn = 0;
+int flagPreinf = 0;
 //time of shot
 unsigned long shotPreinfTime=0;
+unsigned long shotPreinfFinalTime=0;
 unsigned long shotStartTime=0;
 unsigned long shotTimeMS = 0;
 
 void test_switch()
 {
-  //detect switch to start shot
-  if((digitalRead(PIN_SW_BAS) == LOW) && !isChronoOn){
+  //detect switch to start preinf 
+  if((digitalRead(PIN_SW_HAUT) == LOW) && !isChronoPreOn){
+    shotPreinfTime = millis();
+    isChronoPreOn = 1;
+    return;
+  }
+  //flag to detect lever rise 
+  if((digitalRead(PIN_SW_BAS) == LOW) && isChronoPreOn && !isChronoShotOn && !flagPreinf){
+    flagPreinf = 1;
+    return;
+  }
+  //detect switch to start shot 
+  if((digitalRead(PIN_SW_BAS) == HIGH) && flagPreinf && !isChronoShotOn){
     shotStartTime = millis();
-    isChronoOn = 1;
+    shotPreinfFinalTime = shotStartTime-shotPreinfTime;
+    isChronoShotOn = 1;
     return;
   }
   //detect switch to stop shot
-  if((digitalRead(PIN_SW_HAUT) == LOW)&& isChronoOn){
-    isChronoOn = 0;
+  if((digitalRead(PIN_SW_HAUT) == HIGH)&& (isChronoShotOn || isChronoPreOn)){
+    //case if no shot (only preinf)
+    if(!isChronoShotOn){
+      shotPreinfFinalTime = millis()-shotPreinfTime;
+      shotTimeMS = 0;
+    }
+    isChronoShotOn = 0;
+    isChronoPreOn = 0;
+    flagPreinf = 0;
   }
 }
 
-/* DOESNT WORKS
-// Install Pin change interrupt for a pin, can be called multiple times
-void pciSetup(byte pin)
-{
-    *digitalPinToPCMSK(pin) |= bit (digitalPinToPCMSKbit(pin));  // enable pin
-    PCIFR  |= bit (digitalPinToPCICRbit(pin)); // clear any outstanding interrupt
-    PCICR  |= bit (digitalPinToPCICRbit(pin)); // enable interrupt for the group
-}
-
-void setup_switch()
-{
-  pciSetup(PIN_SW_BAS);
-  pciSetup(PIN_SW_HAUT);  
-}
-
-//ISR (PCINT0_vect){} // handle pin change interrupt for D8 to D13 here
-//ISR (PCINT1_vect){} // handle pin change interrupt for A0 to A5 here
-ISR (PCINT2_vect) // handle pin change interrupt for D0 to D7 here
-{
-  //detect switch to start shot
-  if((digitalRead(PIN_SW_BAS) == LOW) && !isChronoOn){
-    shotStartTime = millis();
-    isChronoOn = 1;
-    return;
-  }
-  //detect switch to stop shot
-  if((digitalRead(PIN_SW_HAUT) == LOW)&& isChronoOn){
-    isChronoOn = 0;
-  }  
-}  */
 
 //=====================
 // PID init
@@ -70,6 +70,7 @@ ISR (PCINT2_vect) // handle pin change interrupt for D0 to D7 here
 
 //Define Variables we'll be connecting to
 double PID_setpoint, PID_input, PID_output;
+double last_PID_output;
 //Specify the links and initial tuning parameters
 double Kp=50, Ki=0.1, Kd=0.1;
 PID myPID(&PID_input, &PID_output, &PID_setpoint, Kp, Ki, Kd, P_ON_E,DIRECT);
@@ -95,13 +96,6 @@ void setup_pid(){
 #include <SoftwareSerial.h>
 SoftwareSerial DisplaySerial(2,3) ;// pin 2 = TX of display, pin3 = RX
 
-#define LOG_MESSAGES //debug ON
-#ifdef LOG_MESSAGES
-  #define HWLOGGING Serial
-#else
-  #define HWLOGGING if (1) {} else Serial
-#endif
-
 #include "Goldelox_Serial_4DLib.h"
 #include "Goldelox_Const4D.h"
 
@@ -112,6 +106,14 @@ Goldelox_Serial_4DLib Display(&DisplaySerial);
 #define iOledLudoL 0x6400
 #define iBgDashboardH     0x0001
 #define iBgDashboardL     0x0600
+#define ibar0H            0x0001
+#define ibar0L            0xA600
+#define ibar1H            0x0001
+#define ibar1L            0xAE00
+#define ibar2H            0x0001
+#define ibar2L            0xB600
+#define ibar3H            0x0001
+#define ibar3L            0xBE00
 #define Inputs 0
 #define  Strings1Count    0
 #define  Strings1Size     1
@@ -241,7 +243,6 @@ float get_temp(int id)
     else
       max2.clearFault();
   }
-  HWLOGGING.println();
   return tempnow;
 }
 
@@ -276,8 +277,11 @@ int getTouched(){
   // FOR DEBUG ONLY
   for (uint8_t i=0; i<12; i++) {
     // it if *is* touched and *wasnt* touched before, alert!
-    if ((currtouched & _BV(i)) && !(lasttouched & _BV(i)) ) {
+    if ((currtouched & _BV(i)) /*&& !(lasttouched & _BV(i))*/ ) {
       HWLOGGING.print(i); HWLOGGING.println(" touched");
+      // reset our state
+      lasttouched = currtouched;
+      return i;
     }
     //if it *was* touched and now *isnt*, alert!
     //if (!(currtouched & _BV(i)) && (lasttouched & _BV(i)) ) {
@@ -287,9 +291,8 @@ int getTouched(){
 
   // reset our state
   lasttouched = currtouched;
-
-  // return touched pins
-  return currtouched;
+  
+  return 0;
 }
 //=============================
 // SETUP
@@ -358,13 +361,32 @@ void loop()
   //Touch update
   //-----------------------------
   ct = getTouched();
-//  if(ct & _BV(0))
-    
+  if(ct != 0){
+    if(ct < 6)
+      PID_setpoint--;
+    else
+      PID_setpoint++;
+  }
   //PID update
   //-----------------------------
   PID_input = tSensor1;
   myPID.Compute();
-    
+  HWLOGGING.println("/PIDOutput/");HWLOGGING.print(PID_output); 
+  
+  //Icon PID display update
+  //-----------------------------
+  
+  if(PID_output == 0)
+    Display.media_SetAdd(ibar0H, ibar0L) ;      // point to the right image
+  else if(PID_output <= 30)
+    Display.media_SetAdd(ibar1H, ibar1L) ;      // point to the right image
+  else if(PID_output <= 80)
+    Display.media_SetAdd(ibar2H, ibar2L) ;      // point to the right image
+  else
+    Display.media_SetAdd(ibar3H, ibar3L) ;      // point to the right image
+  Display.media_Image(14, 26) ;            // show image
+  
+  last_PID_output = PID_output;
   //SSR update
   //-----------------------------
   //PID output is percent, duty cycle is 1024, but we must translate to steps of 25 because of zero crossing 50Hz
@@ -385,7 +407,8 @@ void loop()
   Display.txt_MoveCursor(0,0);
   Display.gfx_MoveTo(55 , 27) ;
   //round temperature, only one number after virgule
-  dtostrf(tSensor1, 5, 1, sTemp );
+  //dtostrf(tSensor1, 5, 1, sTemp );
+  dtostrf(tSensor1, 5, 0, sTemp );
   sprintf(buff,"%s/%d%sC   ",sTemp,(int)PID_setpoint,degreChar);
   Display.putstr(buff);
   
@@ -409,32 +432,36 @@ void loop()
   //-----------------------------
   //check switch state different times (for better response time)
   test_switch();
+
   //if chrono is running, update shot time
-  if(isChronoOn){
-    shotTimeMS = millis()- shotStartTime;
-  }else{
-    //if chrono is not running, reset 0
-    shotTimeMS = 0;
+  if(isChronoPreOn && !isChronoShotOn){
+    shotTimeMS = millis()- shotPreinfTime;
   } 
+  if(isChronoShotOn){
+    shotTimeMS = millis()- shotStartTime;
+  }
   Display.gfx_MoveTo(62 , 94) ;
   int shotMin,shotSec,shotMSec;
   shotMin = (int)(shotTimeMS / 60000);
   shotSec = (int)((shotTimeMS / 1000)- (shotMin*60));
   shotMSec = (int)(((shotTimeMS/100) - (shotMin*600) - (shotSec*10)));
-  //if(shotMSec >= 1)
-  //  shotSec++;
   //sprintf(buff,"%d\"%d.%d  ",shotMin,shotSec,shotMSec);
-  sprintf(buff,"%d\"%d    ",shotMin,shotSec);
+  //sprintf(buff,"%d\"%d    ",shotMin,shotSec);
+  
+  if(isChronoPreOn && !isChronoShotOn)
+    sprintf(buff,"%d' -PRE-   ",shotSec);
+  else
+    sprintf(buff,"%d' > %d'    ",(int)(shotPreinfFinalTime/1000), shotSec);
   Display.putstr(buff);
   
-  HWLOGGING.print("A7=");HWLOGGING.println(millis()-loopstart);
+  //HWLOGGING.print("A7=");HWLOGGING.println(millis()-loopstart);
 
   //Idle before loop, sync to 1 second
   //-----------------------------
   int timeToWait = 685 - (millis()-loopstart);
   if(timeToWait > 0)
     delay(timeToWait);
-  HWLOGGING.print("A8=");HWLOGGING.println(millis()-loopstart);
+  //HWLOGGING.print("A8=");HWLOGGING.println(millis()-loopstart);
 }
 
 //=============================
