@@ -3,30 +3,88 @@
 //=============================
 
 //target boiler temp 
-#define DEFAULT_TARGET_TEMP 25 //120
+#define DEFAULT_TARGET_TEMP 45 //120
+
+//=====================
+// CHRONO init
+//=====================
+#define PIN_SW_BAS  6
+#define PIN_SW_HAUT  7
+
+int isChronoOn = 0;
 //time of shot
+unsigned long shotPreinfTime=0;
 unsigned long shotStartTime=0;
 unsigned long shotTimeMS = 0;
 
+void test_switch()
+{
+  //detect switch to start shot
+  if((digitalRead(PIN_SW_BAS) == LOW) && !isChronoOn){
+    shotStartTime = millis();
+    isChronoOn = 1;
+    return;
+  }
+  //detect switch to stop shot
+  if((digitalRead(PIN_SW_HAUT) == LOW)&& isChronoOn){
+    isChronoOn = 0;
+  }
+}
+
+/* DOESNT WORKS
+// Install Pin change interrupt for a pin, can be called multiple times
+void pciSetup(byte pin)
+{
+    *digitalPinToPCMSK(pin) |= bit (digitalPinToPCMSKbit(pin));  // enable pin
+    PCIFR  |= bit (digitalPinToPCICRbit(pin)); // clear any outstanding interrupt
+    PCICR  |= bit (digitalPinToPCICRbit(pin)); // enable interrupt for the group
+}
+
+void setup_switch()
+{
+  pciSetup(PIN_SW_BAS);
+  pciSetup(PIN_SW_HAUT);  
+}
+
+//ISR (PCINT0_vect){} // handle pin change interrupt for D8 to D13 here
+//ISR (PCINT1_vect){} // handle pin change interrupt for A0 to A5 here
+ISR (PCINT2_vect) // handle pin change interrupt for D0 to D7 here
+{
+  //detect switch to start shot
+  if((digitalRead(PIN_SW_BAS) == LOW) && !isChronoOn){
+    shotStartTime = millis();
+    isChronoOn = 1;
+    return;
+  }
+  //detect switch to stop shot
+  if((digitalRead(PIN_SW_HAUT) == LOW)&& isChronoOn){
+    isChronoOn = 0;
+  }  
+}  */
 
 //=====================
 // PID init
 //=====================
 #include "PID_v1.h"
+#include "TimerOne.h"
 
 //Define Variables we'll be connecting to
 double PID_setpoint, PID_input, PID_output;
 //Specify the links and initial tuning parameters
-//double Kp=2, Ki=5, Kd=1;
-double Kp=25, Ki=0.1, Kd=0.1;
+double Kp=50, Ki=0.1, Kd=0.1;
 PID myPID(&PID_input, &PID_output, &PID_setpoint, Kp, Ki, Kd, P_ON_E,DIRECT);
 
 void setup_pid(){
   PID_setpoint = DEFAULT_TARGET_TEMP;
   myPID.SetOutputLimits(0,100);
-  myPID.SetSampleTime(350);
+  myPID.SetSampleTime(250);
   //turn the PID on
   myPID.SetMode(AUTOMATIC);
+
+  //set a timer to drive the SSR
+  Timer1.initialize(250000); // set a timer of 0,25 second length (4Hz)
+  //PWM on pin 9, set to 0 for now
+  Timer1.pwm(9,0);
 }
 
 //=====================
@@ -123,8 +181,10 @@ void setup_oled() {
 #include <Adafruit_MAX31865.h>
 #include <SPI.h>
 
-// Use software SPI: CS, DI, DO, CLK
-Adafruit_MAX31865 max = Adafruit_MAX31865(10, 11, 12, 13);
+// Use software SPI: CS, DI, DO, CLK (use 8 instead of 10 because of pwm)
+Adafruit_MAX31865 max = Adafruit_MAX31865(8, 11, 12, 13);
+Adafruit_MAX31865 max2 = Adafruit_MAX31865(10, 11, 12, 13);
+
 // use hardware SPI, just pass in the CS pin
 //Adafruit_MAX31865 max = Adafruit_MAX31865(10);
 // The value of the Rref resistor. Use 430.0!
@@ -132,19 +192,30 @@ Adafruit_MAX31865 max = Adafruit_MAX31865(10, 11, 12, 13);
 
 void setup_temp()
 {
-  //init sensor
+  //init sensors
   max.begin(MAX31865_3WIRE);  // set to 2WIRE or 4WIRE as necessary
+  max2.begin(MAX31865_3WIRE);  // set to 2WIRE or 4WIRE as necessary
 }
 
-float get_temp()
+float get_temp(int id)
 {
-  uint16_t rtd = max.readRTD();
+  uint16_t rtd;
+  float tempnow;
+  uint8_t fault;
+  
+  if(id == 1){
+    rtd = max.readRTD();
+    tempnow = max.temperature(100, RREF);
+    fault = max.readFault();
+  }else{
+    rtd = max2.readRTD();
+    tempnow = max2.temperature(100, RREF);
+    fault = max2.readFault();
+  }
   //float ratio = rtd;
   //ratio /= 32768;
-  float tempnow = max.temperature(100, RREF);
-
+  
   // Check and print any faults
-  uint8_t fault = max.readFault();
   if (fault) {
     HWLOGGING.print("Fault 0x"); HWLOGGING.println(fault, HEX);
     if (fault & MAX31865_FAULT_HIGHTHRESH) {
@@ -165,12 +236,61 @@ float get_temp()
     if (fault & MAX31865_FAULT_OVUV) {
       HWLOGGING.println("Under/Over voltage"); 
     }
-    max.clearFault();
+    if(id == 1)
+      max.clearFault();
+    else
+      max2.clearFault();
   }
   HWLOGGING.println();
   return tempnow;
 }
 
+//=============================
+// MPR121 init (touch sensor)
+//=============================
+#include <Wire.h>
+#include "Adafruit_MPR121.h"
+
+// You can have up to 4 on one i2c bus but one is enough for testing!
+Adafruit_MPR121 cap = Adafruit_MPR121();
+
+// Keeps track of the last pins touched
+// so we know when buttons are 'released'
+uint16_t lasttouched = 0;
+uint16_t currtouched = 0;
+
+void setup_touch(){
+  // Default address is 0x5A, if tied to 3.3V its 0x5B
+  // If tied to SDA its 0x5C and if SCL then 0x5D
+  if (!cap.begin(0x5A)) {
+    HWLOGGING.println("MPR121 not found, check wiring?");
+    while (1);
+  }
+  HWLOGGING.println("MPR121 found!");
+}
+
+int getTouched(){
+  // Get the currently touched pads
+  currtouched = cap.touched();
+
+  // FOR DEBUG ONLY
+  for (uint8_t i=0; i<12; i++) {
+    // it if *is* touched and *wasnt* touched before, alert!
+    if ((currtouched & _BV(i)) && !(lasttouched & _BV(i)) ) {
+      HWLOGGING.print(i); HWLOGGING.println(" touched");
+    }
+    //if it *was* touched and now *isnt*, alert!
+    //if (!(currtouched & _BV(i)) && (lasttouched & _BV(i)) ) {
+    //  HWLOGGING.print(i); HWLOGGING.println(" released");
+    //}
+  }
+
+  // reset our state
+  lasttouched = currtouched;
+
+  // return touched pins
+  return currtouched;
+}
 //=============================
 // SETUP
 //=============================
@@ -181,6 +301,8 @@ void setup()
   setup_oled();
   setup_temp();
   setup_pid();
+  setup_touch();
+  //setup_switch();
   show_loading();
 }
 
@@ -213,7 +335,7 @@ void show_loading(){
   Display.txt_FontID(MEDIA) ; // Font index correct at time of code generation
 
   //init few vars
-  shotStartTime = millis();
+  //shotStartTime = millis();
 }
 
 //=============================
@@ -221,23 +343,42 @@ void show_loading(){
 //=============================
 void loop() 
 {
-  float tSensor1= get_temp();//((get_temp()-18)*120)/(25-18);
-  float tSensor2 = 0; 
+  float tSensor1= get_temp(1);//((get_temp()-18)*120)/(25-18);
+  float tSensor2 = get_temp(2); 
   char sTemp[6];
-  HWLOGGING.println("loop");
-  //numx 
-  //HWLOGGING.print("temp");
-  //HWLOGGING.print(tSensor1);HWLOGGING.print("C");
-
+  char buff[255];
+  int ct;
+  char degreChar[] = "\xb0";
+  //profiling data
+  unsigned long loopstart = millis();
+  
+  //check switch state different times (for better response time)
+  test_switch();
+  
+  //Touch update
+  //-----------------------------
+  ct = getTouched();
+//  if(ct & _BV(0))
+    
   //PID update
   //-----------------------------
   PID_input = tSensor1;
   myPID.Compute();
+    
+  //SSR update
+  //-----------------------------
+  //PID output is percent, duty cycle is 1024, but we must translate to steps of 25 because of zero crossing 50Hz
+  int PIDsteps = (int)(PID_output/4);
+  int currentduty = (PIDsteps*1024)/25;
+  Timer1.setPwmDuty(9,currentduty);
 //  HWLOGGING.print("PID Input");HWLOGGING.println(PID_input);
-//  HWLOGGING.print("PID Output");HWLOGGING.println(PID_output);
-//  HWLOGGING.print("PID P");HWLOGGING.println(myPID.GetKp());
-//  HWLOGGING.print("PID I");HWLOGGING.println(myPID.GetKi());
-//  HWLOGGING.print("PID D");HWLOGGING.println(myPID.GetKd());
+/*
+  HWLOGGING.print("Time/");HWLOGGING.print(millis());
+  HWLOGGING.print("/Temp/");HWLOGGING.print(tSensor1);
+  HWLOGGING.print("/PIDOutput/");HWLOGGING.print(PID_output);
+  HWLOGGING.print("/PIDsteps/");HWLOGGING.print(PIDsteps);
+  HWLOGGING.print("/duty/");HWLOGGING.print(currentduty);
+*/
   
   //Display temperature sensor #1
   //-----------------------------
@@ -245,36 +386,55 @@ void loop()
   Display.gfx_MoveTo(55 , 27) ;
   //round temperature, only one number after virgule
   dtostrf(tSensor1, 5, 1, sTemp );
-  Display.print(sTemp);
-  Display.print("/");
-  Display.print((int)PID_setpoint);
-  Display.print("C   ");
-
+  sprintf(buff,"%s/%d%sC   ",sTemp,(int)PID_setpoint,degreChar);
+  Display.putstr(buff);
+  
+  //check switch state different times (for better response time)
+  test_switch();
+    
   //Display temperature sensor #2
   //-----------------------------
   Display.gfx_MoveTo(50 , 60) ;
   //round temperature, only one number after virgule
-  //dtostrf(tSensor2, 5, 1, sTemp );
-  dtostrf(PID_output, 5, 0, sTemp);
-  Display.print("PID:");
-  Display.print(sTemp);
-  Display.print("%   ");
+  dtostrf(tSensor2, 5, 1, sTemp );
+  sprintf(buff,"%s%sC   ",sTemp,degreChar);
+  Display.putstr(buff);
+  
+  //dtostrf(PID_output, 5, 0, sTemp);
+  //Display.print("PID:");
+  //Display.print(sTemp);
+  //Display.print("%   ");
 
   //Display time of shot
   //-----------------------------
-  shotTimeMS = millis()- shotStartTime;
+  //check switch state different times (for better response time)
+  test_switch();
+  //if chrono is running, update shot time
+  if(isChronoOn){
+    shotTimeMS = millis()- shotStartTime;
+  }else{
+    //if chrono is not running, reset 0
+    shotTimeMS = 0;
+  } 
   Display.gfx_MoveTo(62 , 94) ;
   int shotMin,shotSec,shotMSec;
   shotMin = (int)(shotTimeMS / 60000);
   shotSec = (int)((shotTimeMS / 1000)- (shotMin*60));
   shotMSec = (int)(((shotTimeMS/100) - (shotMin*600) - (shotSec*10)));
-  Display.print(shotMin); Display.print("\"");
-  Display.print(shotSec); Display.print(".");
-  Display.print(shotMSec);  Display.print("     ");
+  //if(shotMSec >= 1)
+  //  shotSec++;
+  //sprintf(buff,"%d\"%d.%d  ",shotMin,shotSec,shotMSec);
+  sprintf(buff,"%d\"%d    ",shotMin,shotSec);
+  Display.putstr(buff);
+  
+  HWLOGGING.print("A7=");HWLOGGING.println(millis()-loopstart);
 
-  //Idle before loop
+  //Idle before loop, sync to 1 second
   //-----------------------------
-  delay(50);
+  int timeToWait = 685 - (millis()-loopstart);
+  if(timeToWait > 0)
+    delay(timeToWait);
+  HWLOGGING.print("A8=");HWLOGGING.println(millis()-loopstart);
 }
 
 //=============================
