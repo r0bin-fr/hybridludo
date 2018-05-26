@@ -1,0 +1,91 @@
+#platform "GOLDELOX"
+#platform "GOLDELOX"
+
+// Program Skeleton 1.0 generated 10/02/2018 21:55:36
+
+#inherit "4DGL_16bitColours.fnc"
+
+#inherit "VisualConst.inc"
+
+#inherit "LudoAppConst.inc"
+
+//#inherit "PrintDisk.inc"
+
+var numx := 1;
+
+func main()
+//  Uncomment the following if uSD images, fonts or strings used.
+
+    print("Starting\n") ;
+    while(!media_Init())
+        putstr("Drive not mounted...");
+        pause(200);
+        gfx_Cls();
+
+     wend
+
+
+    // OledLudo 1.1 generated 11/02/2018 00:05:26
+    media_SetAdd(iOledLudoH, iOledLudoL) ;      // point to the OledLudo image
+    media_Image(0, 0) ;            // show image
+
+
+
+    // BgDashboard 1.0 generated 24/02/2018 14:24:43
+    media_SetAdd(iBgDashboardH, iBgDashboardL) ;      // point to the BgDashboard image
+    media_Image(0, 0) ;            // show image
+
+
+
+    // Strings3 1.0 generated 24/02/2018 14:53:53
+    media_SetSector(0, Strings3FontStartL) ;    // must come b4 setting fontID
+    txt_FontID(MEDIA) ; // Font index correct at time of code generation
+    txt_FGcolour(WHITE) ;
+    txt_BGcolour(BLACK) ;
+    gfx_MoveTo(52 , 48) ;
+    //PrintDisk(Strings3StartH, Strings3StartL, Strings3Size, i) ; // where i is Message 0 - Strings3Count-1
+
+    // Strings2 1.0 generated 11/02/2018 00:37:50
+    media_SetSector(0, Strings2FontStartL) ;    // must come b4 setting fontID
+    txt_FontID(MEDIA) ; // Font index correct at time of code generation
+    txt_FGcolour(WHITE) ;
+    txt_BGcolour(BLACK) ;
+
+
+
+
+    // bar1 1.0 generated 09/04/2018 23:48:58
+    media_SetAdd(ibar1H, ibar1L) ;      // point to the bar1 image
+    media_Image(79, 53) ;            // show image
+
+    // bar2 1.0 generated 09/04/2018 23:49:27
+    media_SetAdd(ibar2H, ibar2L) ;      // point to the bar2 image
+    media_Image(82, 98) ;            // show image
+
+    // bar3 1.0 generated 09/04/2018 23:49:57
+    media_SetAdd(ibar3H, ibar3L) ;      // point to the bar3 image
+    media_Image(125, 47) ;            // show image
+
+    // bar0 1.0 generated 09/04/2018 23:48:21
+    media_SetAdd(ibar0H, ibar0L) ;      // point to the bar0 image
+    media_Image(44, 28) ;            // show image
+
+
+
+    //loop
+    repeat
+
+    gfx_MoveTo(87 , 103) ;
+    putstr("Label ") ;
+    print(numx);
+    print("   ");
+    //putstr("o");
+    //PrintDisk(0,Strings2StartH, Strings2StartL, Strings2Size, numx) ; // where i is Message 0 - Strings2Count-1
+    numx++;
+    if(numx > 100)
+        numx := 0;
+    endif
+
+    forever
+endfunc
+

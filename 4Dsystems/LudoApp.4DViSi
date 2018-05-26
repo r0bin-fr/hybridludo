@@ -1,0 +1,198 @@
+﻿Version     0.0
+Platform    uOLED-160-G1-L
+PlatRes     128x160
+Depends
+end
+Options
+    Visualizer
+    Speed                        9600
+    Checksum                     No
+    ResponseSize                 2
+    Multidrop                    No
+    Destination                  0
+    DestBank                     0
+    MainForm                     0
+    SndBuf                       0
+    ButtonDisable                No
+    SignedDigits                 Yes
+end
+Form
+    Name                         OledLudo
+    Alias                        Form1
+    Bgtype                       Image
+    Color                        BLACK
+    Image                        'HYbrid By Dynamos Screen-black2.1.png'
+    Source.Height                128
+    Source.Left                  0
+    Source.Top                   0
+    Source.Width                 160
+    OnActivate                   ''
+    OnCreate                     ''
+    OnRepeat                     ''
+    OnTouchMoving                ''
+    OnTouchPressed               ''
+    OnTouchReleased              ''
+end
+Strings
+    Name                         Strings1
+    Alias                        Strings1
+    Alignment                    Left
+    BGcolor                      BLACK
+    Height                       16
+    FGcolor                      WHITE
+    Font.Bold                    No
+    Font.CharSet                 ANSI
+    Font.Italic                  No
+    Font.Name                    '4D SYSTEM (7x8)'
+    Font.Opaque                  Yes
+    Font.Size                    8
+    Font.Strikethrough           No
+    Font.Underline               No
+    Left                         104
+    Strings                      ''
+    StringsStyle                 Message
+    Top                          112
+    Width                        56
+    OnChanged                    ''
+end
+Strings
+    Name                         Strings2
+    Alias                        Strings2
+    Alignment                    Left
+    BGcolor                      BLACK
+    Height                       25
+    FGcolor                      WHITE
+    Font.Bold                    No
+    Font.CharSet                 ANSI
+    Font.Italic                  No
+    Font.Name                    Bogboo
+    Font.Opaque                  Yes
+    Font.Size                    18
+    Font.Strikethrough           No
+    Font.Underline               No
+    Left                         87
+    Strings                      0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n
+    StringsStyle                 Message
+    Top                          103
+    Width                        73
+    OnChanged                    ''
+end
+Label
+    Name                         Label1
+    Alias                        Label1
+    4DGLFont.Font                SYSTEM
+    4DGLFont.Bold                No
+    4DGLFont.Italic              No
+    4DGLFont.Inverse             No
+    4DGLFont.Underline           No
+    4DGLFont.MagWidth            1
+    4DGLFont.MagHeight           1
+    4DGLFont.Opaque              Yes
+    BGcolor                      BLACK
+    Caption                      Label1
+    FGcolor                      WHITE
+    Left                         118
+    Top                          27
+end
+Image
+    Name                         BgDashboard
+    Alias                        BgDashboard
+    Height                       127
+    Image                        dashboard2.1.png
+    Left                         0
+    Source.Height                128
+    Source.Left                  0
+    Source.Top                   0
+    Source.Width                 160
+    Top                          0
+    Width                        160
+    OnTouchMoving                ''
+    OnTouchPressed               ''
+    OnTouchReleased              ''
+end
+Strings
+    Name                         Strings3
+    Alias                        Strings3
+    Alignment                    Left
+    BGcolor                      BLACK
+    Height                       51
+    FGcolor                      WHITE
+    Font.Bold                    No
+    Font.CharSet                 ANSI
+    Font.Italic                  No
+    Font.Name                    Bogboo
+    Font.Opaque                  Yes
+    Font.Size                    24
+    Font.Strikethrough           No
+    Font.Underline               No
+    Left                         52
+    Strings                      0123456789
+    StringsStyle                 Message
+    Top                          48
+    Width                        81
+    OnChanged                    ''
+end
+Image
+    Name                         bar0
+    Alias                        bar0
+    Height                       28
+    Image                        bar0.png
+    Left                         44
+    Source.Height                28
+    Source.Left                  0
+    Source.Top                   0
+    Source.Width                 28
+    Top                          28
+    Width                        29
+    OnTouchMoving                ''
+    OnTouchPressed               ''
+    OnTouchReleased              ''
+end
+Image
+    Name                         bar1
+    Alias                        Image1
+    Height                       28
+    Image                        bar1.png
+    Left                         79
+    Source.Height                28
+    Source.Left                  0
+    Source.Top                   0
+    Source.Width                 28
+    Top                          53
+    Width                        28
+    OnTouchMoving                ''
+    OnTouchPressed               ''
+    OnTouchReleased              ''
+end
+Image
+    Name                         bar2
+    Alias                        bar2
+    Height                       28
+    Image                        bar2.png
+    Left                         82
+    Source.Height                28
+    Source.Left                  0
+    Source.Top                   0
+    Source.Width                 28
+    Top                          98
+    Width                        28
+    OnTouchMoving                ''
+    OnTouchPressed               ''
+    OnTouchReleased              ''
+end
+Image
+    Name                         bar3
+    Alias                        bar3
+    Height                       28
+    Image                        bar3.png
+    Left                         125
+    Source.Height                28
+    Source.Left                  0
+    Source.Top                   0
+    Source.Width                 28
+    Top                          47
+    Width                        28
+    OnTouchMoving                ''
+    OnTouchPressed               ''
+    OnTouchReleased              ''
+end
