@@ -3,7 +3,7 @@
 //=============================
 
 //target boiler temp 
-#define DEFAULT_TARGET_TEMP 25 //120
+#define DEFAULT_TARGET_TEMP 120 //25 //120
 
 //debug mode
 #define LOG_MESSAGES //debug ON
@@ -12,6 +12,31 @@
 #else
   #define HWLOGGING if (1) {} else Serial
 #endif
+
+//=====================
+// Capteur de poids
+//=====================
+#include <Hx711.h>
+
+#define MAX_GAUGE_POIDS 60 //60grams max
+#define SCK_PIN   14
+#define DT_PIN    15 
+/* initiate scale... */
+Hx711 scale(DT_PIN, SCK_PIN);
+float oldPoids = 0;
+//init
+void setup_scale(){
+  //scale setting
+  scale.setScale(900);
+  scale.setOffset(scale.averageValue());
+}
+//pesée
+float get_poids()
+{
+    float poids = scale.getGram2(5);
+    oldPoids = poids; 
+    return poids;
+}
 
 //=====================
 // CHRONO init
@@ -101,19 +126,25 @@ SoftwareSerial DisplaySerial(2,3) ;// pin 2 = TX of display, pin3 = RX
 
 Goldelox_Serial_4DLib Display(&DisplaySerial);
 
-//variables
+//variables   
 #define iOledLudoH 0x0000
 #define iOledLudoL 0x6400
 #define iBgDashboardH     0x0001
 #define iBgDashboardL     0x0600
 #define ibar0H            0x0001
-#define ibar0L            0xA600
+#define ibar0L            0xA800
 #define ibar1H            0x0001
-#define ibar1L            0xAE00
+#define ibar1L            0xB000
 #define ibar2H            0x0001
-#define ibar2L            0xB600
+#define ibar2L            0xB800
 #define ibar3H            0x0001
-#define ibar3L            0xBE00
+#define ibar3L            0xC000
+#define igauge1H          0x0001
+#define igauge1L          0xC800
+#define igauge2H          0x0001
+#define igauge2L          0xEA00
+#define igauge3H          0x0002
+#define igauge3L          0x0C00
 #define Inputs 0
 #define  Strings1Count    0
 #define  Strings1Size     1
@@ -301,11 +332,13 @@ void setup()
 {
   HWLOGGING.begin(115200);
   HWLOGGING.println("Ludo app start!");
+  //setup sensors
   setup_oled();
   setup_temp();
   setup_pid();
   setup_touch();
-  //setup_switch();
+  setup_scale();
+  //update screen
   show_loading();
 }
 
@@ -355,6 +388,10 @@ void loop()
   //profiling data
   unsigned long loopstart = millis();
   
+  // Hybrid font
+  Display.media_SetSector(0, Strings3FontStartL) ;    // must come b4 setting fontID
+  Display.txt_FontID(MEDIA) ;   
+  
   //check switch state different times (for better response time)
   test_switch();
   
@@ -371,11 +408,10 @@ void loop()
   //-----------------------------
   PID_input = tSensor1;
   myPID.Compute();
-  HWLOGGING.println("/PIDOutput/");HWLOGGING.print(PID_output); 
+  //HWLOGGING.println("/PIDOutput/");HWLOGGING.print(PID_output); 
   
   //Icon PID display update
   //-----------------------------
-  
   if(PID_output == 0)
     Display.media_SetAdd(ibar0H, ibar0L) ;      // point to the right image
   else if(PID_output <= 30)
@@ -384,7 +420,7 @@ void loop()
     Display.media_SetAdd(ibar2H, ibar2L) ;      // point to the right image
   else
     Display.media_SetAdd(ibar3H, ibar3L) ;      // point to the right image
-  Display.media_Image(14, 26) ;            // show image
+  Display.media_Image(37, 28) ;            // show image (14,26)
   
   last_PID_output = PID_output;
   //SSR update
@@ -405,22 +441,38 @@ void loop()
   //Display temperature sensor #1
   //-----------------------------
   Display.txt_MoveCursor(0,0);
-  Display.gfx_MoveTo(55 , 27) ;
+  Display.gfx_MoveTo(70 , 32) ;
+
   //round temperature, only one number after virgule
   //dtostrf(tSensor1, 5, 1, sTemp );
-  dtostrf(tSensor1, 5, 0, sTemp );
-  sprintf(buff,"%s/%d%sC   ",sTemp,(int)PID_setpoint,degreChar);
+  //dtostrf(tSensor1, 5, 0, sTemp );
+  //sprintf(buff,"%s/%d%sC   ",sTemp,(int)PID_setpoint,degreChar);
+  //sprintf(buff,"%d/%d%sC   ",(int)tSensor1,(int)PID_setpoint,degreChar);
+  sprintf(buff,"%s%s",String(tSensor1,1).c_str(),degreChar);
   Display.putstr(buff);
+  //System font
+  //unsigned int nx,ny;
+  //Display.gfx_Orbit(45,15,&nx,&ny);
+  //Display.gfx_MoveTo(nx , ny) ;  
+  Display.txt_FontID(0) ;
+  sprintf(buff,"/%d%sC   ",(int)PID_setpoint,degreChar);
+  Display.putstr(buff);
+  //Back to Hybrid font
+  Display.media_SetSector(0, Strings3FontStartL) ;    // must come b4 setting fontID
+  Display.txt_FontID(MEDIA) ;   
+
   
   //check switch state different times (for better response time)
   test_switch();
     
   //Display temperature sensor #2
   //-----------------------------
-  Display.gfx_MoveTo(50 , 60) ;
+  Display.gfx_MoveTo(70 , 65) ;
   //round temperature, only one number after virgule
   dtostrf(tSensor2, 5, 1, sTemp );
-  sprintf(buff,"%s%sC   ",sTemp,degreChar);
+  //sprintf(buff,"%s%sC   ",sTemp,degreChar);
+  sprintf(buff,"%s%sC   ",String(tSensor2,1).c_str(),degreChar);
+  //sprintf(buff,"%.1f%sC   ",tSensor1,degreChar);
   Display.putstr(buff);
   
   //dtostrf(PID_output, 5, 0, sTemp);
@@ -440,7 +492,7 @@ void loop()
   if(isChronoShotOn){
     shotTimeMS = millis()- shotStartTime;
   }
-  Display.gfx_MoveTo(62 , 94) ;
+  Display.gfx_MoveTo(70 , 99) ;
   int shotMin,shotSec,shotMSec;
   shotMin = (int)(shotTimeMS / 60000);
   shotSec = (int)((shotTimeMS / 1000)- (shotMin*60));
@@ -453,9 +505,33 @@ void loop()
   else
     sprintf(buff,"%d' > %d'    ",(int)(shotPreinfFinalTime/1000), shotSec);
   Display.putstr(buff);
-  
-  //HWLOGGING.print("A7=");HWLOGGING.println(millis()-loopstart);
 
+  //Display poids
+  //-----------------------------
+  //HWLOGGING.print("A7=");HWLOGGING.println(millis()-loopstart);
+  float poi = get_poids();
+  //HWLOGGING.print("Poids:");HWLOGGING.print(poi);HWLOGGING.println("gr.");
+  if(((int)poi) <= 0){
+    Display.media_SetAdd(igauge1H, igauge1L) ;      // no coffee
+    Display.media_Image(0, 0) ;            // show image
+  }else if( poi > MAX_GAUGE_POIDS ){
+    Display.media_SetAdd(igauge3H, igauge3L) ;      // full coffee
+    Display.media_Image(0, 0) ;            // show image
+  }else{
+    Display.media_SetAdd(igauge2H, igauge2L) ;      // just bottom
+    Display.media_Image(0, 0) ;            // show image
+    //fill gauge with right amount of coffee
+    int nbPix = poi * 60 / MAX_GAUGE_POIDS;
+    Display.gfx_RectangleFilled(13,96-nbPix,24,96,0xAB4C);
+  }
+  Display.gfx_MoveTo(0 , 110) ;
+  Display.txt_FontID(0) ;
+  //sprintf(buff,"%sg",String(poi,1).c_str());
+  //sprintf(buff,"%dg",(int)poi);
+  dtostrf(poi, 3, 0, sTemp );
+  sprintf(buff,"%sg",sTemp);
+  Display.putstr(buff);
+    
   //Idle before loop, sync to 1 second
   //-----------------------------
   int timeToWait = 685 - (millis()-loopstart);
